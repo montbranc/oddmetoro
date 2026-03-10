@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>メトロノーム</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="メトロノーム">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <meta name="theme-color" content="#0e0f11">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Zen+Kaku+Gothic+New:wght@300;400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg:        #0e0f11;
+      --panel:     #161719;
+      --border:    #2a2c30;
+      --accent:    #e8d44d;
+      --accent2:   #e06b3f;
+      --text:      #d4d6da;
+      --text-dim:  #5a5d65;
+      --text-mid:  #9a9da6;
+      --mono:      'Share Tech Mono', monospace;
+      --sans:      'Zen Kaku Gothic New', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      min-height: 100dvh; /* スマホのアドレスバー対応 */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    /* 背景グリッド */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(232,212,77,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(232,212,77,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ヘッダー */
+    .header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .header .version {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      margin-left: auto;
+      transition: background .3s, box-shadow .3s;
+    }
+    .status-dot.active {
+      background: #4ade80;
+      box-shadow: 0 0 8px #4ade80aa;
+    }
+
+    /* ビートディスプレイ */
+    .beat-display {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 32px 24px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .beat-display::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .05s;
+    }
+    .beat-display.flash::before {
+      transform: scaleX(1);
+    }
+    .beat-display.flash-accent::before {
+      background: var(--accent2);
+      transform: scaleX(1);
+    }
+
+    .beat-number {
+      font-family: var(--mono);
+      font-size: 80px;
+      line-height: 1;
+      color: var(--text-dim);
+      transition: color .05s, transform .05s;
+      display: block;
+      letter-spacing: -.02em;
+    }
+    .beat-number.active       { color: var(--accent); }
+    .beat-number.active-accent{ color: var(--accent2); transform: scale(1.05); }
+
+    .beat-dots {
+      font-family: var(--mono);
+      font-size: 28px;
+      color: var(--text-dim);
+      letter-spacing: .1em;
+      min-height: 36px;
+      display: block;
+      margin-top: 6px;
+      transition: color .05s;
+    }
+    .beat-dots.active        { color: var(--accent); }
+    .beat-dots.active-accent { color: var(--accent2); }
+
+    /* 拍インジケーター */
+    .beat-indicators {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 16px;
+    }
+    .beat-pip {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background .05s, box-shadow .05s;
+    }
+    .beat-pip.on       { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .beat-pip.on-accent{ background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+
+    /* BPM表示 */
+    .bpm-readout {
+      position: absolute;
+      top: 12px; right: 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: .1em;
+    }
+
+    /* セクション */
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 16px;
+    }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    /* テンポスライダー */
+    .tempo-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tempo-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      color: var(--accent);
+      min-width: 56px;
+      text-align: right;
+    }
+    .tempo-unit {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      letter-spacing: .1em;
+      margin-top: 4px;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      flex: 1;
+      height: 4px; /* タッチしやすいよう少し太く */
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px; height: 24px; /* スマホ用に大きく */
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 6px var(--accent);
+      cursor: pointer;
+      transition: box-shadow .15s;
+    }
+    input[type=range]:hover::-webkit-slider-thumb {
+      box-shadow: 0 0 12px var(--accent);
+    }
+
+    .tempo-input {
+      font-family: var(--mono);
+      font-size: 16px; /* iOS自動ズーム防止（16px未満でズームされる） */
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      width: 64px;
+      text-align: center;
+      border-radius: 2px;
+      outline: none;
+      transition: border-color .15s;
+      touch-action: manipulation;
+    }
+    .tempo-input:focus { border-color: var(--accent); }
+
+    /* セレクト行 */
+    .select-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .select-group label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .15em;
+      color: var(--text-dim);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    select {
+      width: 100%;
+      font-family: var(--mono);
+      font-size: 16px; /* iOS自動ズーム防止 */
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 32px 10px 10px;
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a5d65'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: border-color .15s;
+      touch-action: manipulation;
+    }
+    select:focus { border-color: var(--accent); }
+
+    /* アクセントトグル */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .toggle-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-mid);
+      letter-spacing: .08em;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle {
+      position: relative;
+      width: 44px; height: 24px; /* スマホ用に大きく */
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .toggle input { display: none; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 12px;
+      transition: background .2s;
+    }
+    .toggle input:checked ~ .toggle-track { background: var(--accent); }
+    .toggle-thumb {
+      position: absolute;
+      top: 4px; left: 4px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--bg);
+      transition: left .2s;
+    }
+    .toggle input:checked ~ .toggle-track .toggle-thumb { left: 24px; }
+
+    /* ボタン */
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .btn {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      padding: 18px; /* タッチしやすく */
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all .15s;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:hover   { border-color: var(--text-mid); color: var(--text); }
+    .btn:active  { opacity: .7; transform: scale(.97); }
+    .btn:disabled { opacity: .3; cursor: default; pointer-events: none; }
+
+    .btn-start {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .btn-start:hover {
+      background: var(--accent);
+      color: var(--bg);
+      box-shadow: 0 0 16px var(--accent)66;
+    }
+    .btn-stop {
+      border-color: var(--accent2);
+      color: var(--accent2);
+    }
+    .btn-stop:hover {
+      background: var(--accent2);
+      color: #fff;
+      box-shadow: 0 0 16px var(--accent2)66;
+    }
+
+    /* フラッシュアニメーション */
+    @keyframes flash-reset {
+      0%   { transform: scaleX(1); }
+      100% { transform: scaleX(0); }
+    }
+    .flash-bar { animation: flash-reset .12s ease forwards; }
+
+    /* ===== スマホ用調整 ===== */
+    @media (max-width: 480px) {
+      body { padding: 12px; align-items: flex-start; padding-top: 20px; }
+
+      .container { gap: 10px; }
+
+      /* ビートディスプレイをコンパクトに */
+      .beat-display { padding: 20px 16px; }
+      .beat-number  { font-size: 64px; }
+      .beat-dots    { font-size: 22px; min-height: 28px; }
+      .beat-pip     { width: 10px; height: 10px; } /* 見やすく少し大きく */
+
+      /* テンポセクション */
+      .tempo-value  { font-size: 24px; min-width: 48px; }
+
+      /* トグルラベルを少し大きく */
+      .toggle-label { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ヘッダー -->
+  <div class="header">
+    <h1>METRONOME</h1>
+    <span class="version">v2.0</span>
+    <span class="status-dot" id="statusDot"></span>
+  </div>
+
+  <!-- ビートディスプレイ -->
+  <div class="beat-display" id="beatDisplay">
+    <span class="bpm-readout" id="bpmReadout">120 BPM</span>
+    <span class="beat-number" id="beatNumber">—</span>
+    <span class="beat-dots"   id="beatDots"></span>
+    <div class="beat-indicators" id="beatIndicators"></div>
+  </div>
+
+  <!-- テンポ設定 -->
+  <div class="section">
+    <div class="section-label">TEMPO</div>
+    <div class="tempo-row">
+      <div>
+        <div class="tempo-value" id="tempoDisplay">120</div>
+        <div class="tempo-unit">BPM</div>
+      </div>
+      <input type="range" id="tempoSlider" min="1" max="400" value="120">
+      <input type="number" class="tempo-input" id="tempoInput" min="1" max="400" value="120">
+    </div>
+  </div>
+
+  <!-- 拍子・音価設定 -->
+  <div class="section">
+    <div class="section-label">SETTINGS</div>
+    <div class="select-grid">
+      <div class="select-group">
+        <label>拍子</label>
+        <select id="timeSig">
+          <option value="4">4/4</option>
+          <option value="3">3/4</option>
+          <option value="5">5/4</option>
+          <option value="7">7/4</option>
+        </select>
+      </div>
+      <div class="select-group">
+        <label>音価</label>
+        <select id="subdivision">
+          <option value="0.25">全音符</option>
+          <option value="0.5">2分音符</option>
+          <option value="0.75">4拍3連</option>
+          <option value="1" selected>4分音符</option>
+          <option value="1.25">4拍5連</option>
+          <option value="1.5">2拍3連</option>
+          <option value="1.75">4拍7連</option>
+          <option value="2">8分音符</option>
+          <option value="3">3連符</option>
+          <option value="3.5">2拍7連</option>
+          <option value="4">16分音符</option>
+          <option value="5">5連符</option>
+          <option value="6">6連符</option>
+          <option value="7">7連符</option>
+          <option value="8">32分音符</option>
+          <option value="9">9連符</option>
+          <option value="10">10連符</option>
+          <option value="11">11連符</option>
+          <option value="12">12連符</option>
+          <option value="13">13連符</option>
+          <option value="14">14連符</option>
+          <option value="15">15連符</option>
+          <option value="16">64分音符</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="accentToggle" checked>
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <span class="toggle-label">拍の頭にアクセントを付ける</span>
+    </div>
+    <div class="toggle-row">
+      <label class="toggle">
+        <input type="checkbox" id="quarterToggle">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <span class="toggle-label">4分音符の拍も同時に鳴らす</span>
+    </div>
+  </div>
+
+  <!-- 開始/停止ボタン -->
+  <div class="btn-row">
+    <button class="btn btn-start" id="btnStart">▶ 開始</button>
+    <button class="btn btn-stop"  id="btnStop"  disabled>■ 停止</button>
+  </div>
+
+</div>
+
+<script>
+// ====================================================
+//  Web Audio API でクリック音を合成する
+// ====================================================
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const ctx = new AudioContext();
+
+function playClick(isAccent) {
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  if (isAccent) {
+    osc.frequency.setValueAtTime(1600, ctx.currentTime);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime);
+  } else {
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  }
+
+  osc.type = 'sine';
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.07);
+}
+
+// 4分音符専用クリック音（中間の高さ・木琴風）
+function playQuarterClick(isDownbeat) {
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(isDownbeat ? 1400 : 1100, ctx.currentTime);
+  gain.gain.setValueAtTime(isDownbeat ? 0.7 : 0.5, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.06);
+}
+
+// ====================================================
+//  DOM要素の取得
+// ====================================================
+const tempoSlider    = document.getElementById('tempoSlider');
+const tempoInput     = document.getElementById('tempoInput');
+const tempoDisplay   = document.getElementById('tempoDisplay');
+const bpmReadout     = document.getElementById('bpmReadout');
+const timeSigSel     = document.getElementById('timeSig');
+const subdivisionSel = document.getElementById('subdivision');
+const accentToggle   = document.getElementById('accentToggle');
+const quarterToggle  = document.getElementById('quarterToggle');
+const btnStart       = document.getElementById('btnStart');
+const btnStop        = document.getElementById('btnStop');
+const beatNumber     = document.getElementById('beatNumber');
+const beatDots       = document.getElementById('beatDots');
+const beatDisplay    = document.getElementById('beatDisplay');
+const beatIndicators = document.getElementById('beatIndicators');
+const statusDot      = document.getElementById('statusDot');
+
+// ====================================================
+//  状態管理
+// ====================================================
+let isRunning          = false;
+let schedulerID        = null;  // 細分割タイマー ID
+let quarterSchedulerID = null;  // 4分音符タイマー ID
+let beatCount          = 0;     // 細分割カウンタ
+let quarterCount       = 0;     // 4分音符カウンタ
+
+// ====================================================
+//  拍子インジケーターの生成
+// ====================================================
+function buildIndicators() {
+  const numerator = parseInt(timeSigSel.value);
+  beatIndicators.innerHTML = '';
+  for (let i = 0; i < numerator; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'beat-pip';
+    beatIndicators.appendChild(pip);
+  }
+}
+buildIndicators();
+timeSigSel.addEventListener('change', () => {
+  buildIndicators();
+  if (isRunning) { stop(); start(); }
+});
+
+// ====================================================
+//  テンポ同期（スライダー ↔ 入力欄）
+// ====================================================
+function setTempo(val) {
+  val = Math.min(400, Math.max(1, parseInt(val) || 1));
+  tempoSlider.value  = val;
+  tempoInput.value   = val;
+  tempoDisplay.textContent = val;
+  bpmReadout.textContent   = val + ' BPM';
+}
+
+tempoSlider.addEventListener('input', () => setTempo(tempoSlider.value));
+tempoInput.addEventListener('change', () => setTempo(tempoInput.value));
+tempoInput.addEventListener('input',  () => {
+  if (tempoInput.value.length <= 3) setTempo(tempoInput.value);
+});
+
+// ====================================================
+//  メトロノームコア
+// ====================================================
+function getParams() {
+  const bpm       = parseInt(tempoSlider.value);
+  const numerator = parseInt(timeSigSel.value);
+  const subVal    = parseFloat(subdivisionSel.value);
+  const accent    = accentToggle.checked;
+  const totalSubs = Math.round(numerator * subVal); // 1小節あたりの細分割数
+  const interval  = (60000 / bpm) / subVal;         // ms
+  return { bpm, numerator, subVal, accent, totalSubs, interval };
+}
+
+function tick() {
+  const { numerator, subVal, accent, totalSubs } = getParams();
+  const pips = beatIndicators.querySelectorAll('.beat-pip');
+
+  // ループ
+  if (beatCount >= totalSubs) beatCount = 0;
+
+  const pos       = beatCount;
+  const isHead    = (pos % subVal < 0.01);
+  const beatIndex = Math.floor(pos / subVal);
+  const beatNum   = beatIndex + 1;
+  const isAccent  = accent && (beatNum === 1);
+
+  // 音声再生（細分割クリック）
+  if (ctx.state === 'suspended') ctx.resume();
+  if (isHead) {
+    playClick(isAccent);
+  } else {
+    playClick(false);
+  }
+
+  // GUI更新
+  updateDisplay(beatNum, pos, subVal, isAccent, isHead, pips, beatIndex);
+
+  beatCount++;
+}
+
+// 4分音符タイマー用tick（細分割とは完全独立）
+function tickQuarter() {
+  const { numerator, accent } = getParams();
+  const totalQuarters = numerator; // 1小節の4分音符数
+
+  if (quarterCount >= totalQuarters) quarterCount = 0;
+
+  const isDownbeat = (quarterCount === 0);
+  if (ctx.state === 'suspended') ctx.resume();
+  playQuarterClick(accent && isDownbeat);
+
+  quarterCount++;
+}
+
+function updateDisplay(beatNum, pos, subVal, isAccent, isHead, pips, beatIndex) {
+  const cls = isAccent ? 'active-accent' : 'active';
+
+  // 数字
+  beatNumber.className = 'beat-number ' + (isHead ? cls : '');
+  beatNumber.textContent = isHead ? beatNum : Math.floor(pos / subVal) + 1;
+
+  // 点列（中黒）
+  if (subVal > 1 && !isHead) {
+    const dotCount = Math.floor(pos % subVal) + 1;
+    beatDots.textContent = '・'.repeat(dotCount);
+    beatDots.className   = 'beat-dots ' + cls;
+  } else {
+    beatDots.textContent = '';
+    beatDots.className   = 'beat-dots';
+  }
+
+  // インジケーター
+  pips.forEach((p, i) => {
+    p.className = 'beat-pip';
+    if (i === beatIndex) {
+      p.className = 'beat-pip ' + (isAccent ? 'on-accent' : 'on');
+    }
+  });
+
+  // トップバーフラッシュ
+  beatDisplay.classList.remove('flash', 'flash-accent');
+  void beatDisplay.offsetWidth; // reflow
+  if (isHead) {
+    beatDisplay.classList.add(isAccent ? 'flash-accent' : 'flash');
+  }
+}
+
+// ====================================================
+//  開始 / 停止
+// ====================================================
+function start() {
+  if (ctx.state === 'suspended') ctx.resume();
+  isRunning    = true;
+  beatCount    = 0;
+  quarterCount = 0;
+  const { interval, bpm } = getParams();
+  const quarterInterval = 60000 / bpm; // 4分音符間隔(ms)
+
+  tick();        // 細分割：即時1発目
+  schedulerID = setInterval(tick, interval);
+
+  // 4分音符タイマー（トグルONのときだけ起動）
+  if (quarterToggle.checked) {
+    tickQuarter(); // 即時1発目
+    quarterSchedulerID = setInterval(tickQuarter, quarterInterval);
+  }
+
+  btnStart.disabled = true;
+  btnStop.disabled  = false;
+  statusDot.classList.add('active');
+
+  subdivisionSel.disabled = true;
+  timeSigSel.disabled     = true;
+}
+
+function stop() {
+  isRunning = false;
+  clearInterval(schedulerID);
+  clearInterval(quarterSchedulerID);
+  schedulerID        = null;
+  quarterSchedulerID = null;
+  beatCount    = 0;
+  quarterCount = 0;
+
+  btnStart.disabled = false;
+  btnStop.disabled  = true;
+  statusDot.classList.remove('active');
+
+  beatNumber.textContent = '—';
+  beatNumber.className   = 'beat-number';
+  beatDots.textContent   = '';
+  beatDisplay.classList.remove('flash', 'flash-accent');
+
+  beatIndicators.querySelectorAll('.beat-pip').forEach(p => p.className = 'beat-pip');
+
+  subdivisionSel.disabled = false;
+  timeSigSel.disabled     = false;
+}
+
+btnStart.addEventListener('click', start);
+btnStop.addEventListener('click',  stop);
+
+// テンポ変更をリアルタイムで反映（再起動）
+tempoSlider.addEventListener('input', () => {
+  if (isRunning) { stop(); start(); }
+});
+tempoInput.addEventListener('change', () => {
+  if (isRunning) { stop(); start(); }
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(() => console.log('SW registered'))
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
