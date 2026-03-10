@@ -513,7 +513,7 @@ function playClick(isAccent) {
     gain.gain.setValueAtTime(1.0, ctx.currentTime);
   } else {
     osc.frequency.setValueAtTime(800, ctx.currentTime);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime);
   }
 
   osc.type = 'sine';
@@ -594,9 +594,18 @@ function setTempo(val) {
 }
 
 tempoSlider.addEventListener('input', () => setTempo(tempoSlider.value));
+
+// 入力中は補正しない。確定時（blur or Enter）だけ補正する
+tempoInput.addEventListener('input', () => {
+  const val = parseInt(tempoInput.value);
+  tempoDisplay.textContent = (val >= 1 && val <= 400) ? val : tempoDisplay.textContent;
+  bpmReadout.textContent   = (val >= 1 && val <= 400) ? val + ' BPM' : bpmReadout.textContent;
+  tempoSlider.value        = (val >= 1 && val <= 400) ? val : tempoSlider.value;
+});
 tempoInput.addEventListener('change', () => setTempo(tempoInput.value));
-tempoInput.addEventListener('input',  () => {
-  if (tempoInput.value.length <= 3) setTempo(tempoInput.value);
+tempoInput.addEventListener('blur',   () => setTempo(tempoInput.value));
+tempoInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { setTempo(tempoInput.value); tempoInput.blur(); }
 });
 
 // ====================================================
